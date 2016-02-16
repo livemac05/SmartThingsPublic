@@ -18,7 +18,7 @@
 definition(
     name: "LGK Virtual Garage Door",
     namespace: "livemac05",
-    author: "lgkahn kahn-st@lgk.com",
+    author: "livemac05@gmail.com",
     description: "Sync the Simulated garage door device with 2 actual devices, either a tilt or contact sensor and a switch or relay. The simulated device will then control the actual garage door. In addition, the virtual device will sync when the garage door is opened manually, \n It also attempts to double check the door was actually closed in case the beam was crossed. ",
     category: "Convenience",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/garage_contact.png",

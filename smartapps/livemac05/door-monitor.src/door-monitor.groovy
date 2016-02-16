@@ -18,7 +18,7 @@
 definition(
     name: "Door Monitor",
     namespace: "livemac05",
-    author: "SmartThings",
+    author: "livemac05@gmail.com",
     description: "Monitor your garage door and get a text message if it is open too long",
     category: "Safety & Security",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/garage_contact.png",

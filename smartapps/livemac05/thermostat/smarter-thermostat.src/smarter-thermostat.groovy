@@ -19,7 +19,7 @@
 definition(
     name: "Smarter Thermostat",
     namespace: "livemac05/thermostat",
-    author: "SmartThings",
+    author: "livemac05@gmail.com",
     description: "Controls a simulated thermostat to enable decoupled mode<>sensor control",
     category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo.png",
