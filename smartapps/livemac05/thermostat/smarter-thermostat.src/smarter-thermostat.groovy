@@ -96,30 +96,31 @@ def getSetpoints() {
 	switch (location.currentMode) {
     
     	case 'Bedtime':
-        	return [heat: 68, cool: 70]
+        	return [heat: 66, cool: 70]
         case 'Morning':
-        	return [heat: 71, cool: 71]
+        	return [heat: 68, cool: 71]
         
         case 'Home':
         case 'WFH':
         	return [heat: 70, cool: 70]
         
         case 'Night':
-        case 'TV Mode':
-        case 'Movie':
-        case 'Guest':
-        	return [heat: 71, cool: 71]
+        	return [heat: 71, cool: 72]
             
             
             
         case 'Party':
         	return [heat: 65, cool: 67]
+        case 'Guest':
+        	return [heat: 69, cool: 71]
+            
+            
         
         case 'Away':
         	return [heat: 60, cool: 80]
             
         default:
-        	return [heat: 68, cool: 72];
+        	return [heat: null, cool: null];
     }
 }
 def getSensor () {
@@ -277,11 +278,15 @@ def changedLocationMode(evt)
 def setInitialSetpoints (evt) {
 	def heatingSP = getHeatingSetpoint()
 	def coolingSP = getCoolingSetpoint()
-	log.info "Setting to initial setpoints H:${heatingSP}, C:${coolingSP} "
 	enableSync()
+    syncValues()
+    if (!heatingSP || !coolingSP) {
+    	log.info "No setpoint for mode, not setting"
+        return
+    }
+	log.info "Setting to initial setpoints H:${heatingSP}, C:${coolingSP} "
 	simulatedThermostat.setCoolingSetpoint(coolingSP)
 	simulatedThermostat.setHeatingSetpoint(heatingSP)
-    syncValues()
 }
 
 def simulatedSetpointSet (evt) {
@@ -462,10 +467,12 @@ private evaluate()
 def appTouch(evt) {
 	log.debug "Apptouch, setting to setpoints"
     
-	state.coolingSetpoint = getCoolingSetpoint()
-    state.heatingSetpoint = getHeatingSetpoint()
-    setCoolingSetpoint()
-    runIn(state.thermoDelay, setHeatingSetpoint)
+    if (getCoolingSetpoint() && getHeatingSetpoint()) {
+        state.coolingSetpoint = getCoolingSetpoint()
+        state.heatingSetpoint = getHeatingSetpoint()
+        setCoolingSetpoint()
+        runIn(state.thermoDelay, setHeatingSetpoint)
+    }
 }
 
 def setCoolingSetpoint() {
