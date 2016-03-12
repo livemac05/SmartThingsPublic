@@ -32,7 +32,10 @@ metadata {
 		capability "Thermostat"
 		capability "Configuration"
 		capability "Polling"
+        capability "Refresh"
+        capability "Battery"
 
+        command "refresh"
 		command "heatLevelUp"
 		command "heatLevelDown"
 		command "coolLevelUp"
@@ -97,6 +100,18 @@ metadata {
 				]
 			)
 		}
+        
+        standardTile("refresh", "command.refresh", inactiveLabel: false, decoration: "flat") {
+            state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
+        }
+        valueTile("battery", "device.battery", inactiveLabel: false, decoration: "flat") { 
+            state "battery", label:'Battery ${currentValue}%', backgroundColor:"#ffffff" 
+        }
+        valueTile("humidity", "device.humidity", inactiveLabel: false, decoration: "flat") { 
+            state "humidity", label:'Humidity ${currentValue}%', backgroundColor:"#ffffff"
+        }
+        
+        /*
 		standardTile("mode", "device.thermostatMode", inactiveLabel: false, decoration: "flat") {
 			state "off", label:'', action:"switchMode", icon:"st.thermostat.heating-cooling-off"
 			state "heat", label:'', action:"switchMode", icon:"st.thermostat.heat"
@@ -136,7 +151,21 @@ metadata {
         
 		main "temperature"
 		details(["temperature", "mode", "fanMode", "heatLevelDown", "heatingSetpoint", "heatLevelUp", "coolLevelDown", "coolingSetpoint", "coolLevelUp", "refresh", "configure"])
-	}
+        */
+        
+        
+        valueTile("noGoLabel", "device.configure", decoration: "flat", width: 3, height: 1) {
+        	state "configure", label: 'Use Smarter Thermostat Instead'
+        }
+        valueTile("moreLabel", "device.configure", decoration: "flat", width: 3, height: 1) {
+        	state "configure", label: '(In Hallway Room, and Things List)'
+        }
+        
+        main "temperature"
+        details(["noGoLabel", "moreLabel", "temperature", "humidity", "battery", "refresh"])
+        
+        
+    }
 }
 
 /*def setSensorTemperature (value) {
@@ -265,10 +294,71 @@ def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpo
 def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv3.SensorMultilevelReport cmd)
 {
 	def map = [:]
-	map.value = cmd.scaledSensorValue.toString()
-	map.unit = cmd.scale == 1 ? "F" : "C"
-	map.name = "temperature"
+	map.displayed = true
+    map.isStateChange = true
+	if (cmd.sensorType == 1) {
+		map.value = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
+		map.unit = getTemperatureScale()
+		map.name = "temperature"
+	} else if (cmd.sensorType == 5) {
+		map.value = cmd.scaledSensorValue
+		map.unit = "%"
+		map.name = "humidity"
+	}
 	map
+}
+// CUSTOMIZATIONS
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiInstanceCmdEncap cmd) {
+    def encapsulatedCommand = cmd.encapsulatedCommand([0x31: 3])
+    log.debug ("multiinstancev1.MultiInstanceCmdEncap: command from instance ${cmd.instance}: ${encapsulatedCommand}")
+    if (encapsulatedCommand) {
+        return zwaveEvent(encapsulatedCommand)
+    }
+}
+def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
+    def nowTime = new Date().time
+    state.lastBatteryGet = nowTime
+    def map = [ name: "battery", unit: "%" ]
+    map.displayed = true
+    map.isStateChange = true
+    if (cmd.batteryLevel == 0xFF || cmd.batteryLevel == 0) {
+        map.value = 1
+        map.descriptionText = "battery is low!"
+    } else {
+        map.value = cmd.batteryLevel
+    }
+    map
+}
+
+private getBattery() {	//once every 24 hours
+	def nowTime = new Date().time
+	def ageInMinutes = state.lastBatteryGet ? (nowTime - state.lastBatteryGet)/60000 : 1440
+    log.debug "Battery report age: ${ageInMinutes} minutes"
+    if (ageInMinutes >= 1440) {
+        log.debug "Fetching fresh battery value"
+		zwave.batteryV1.batteryGet().format()
+    } else "delay 87"
+}
+
+private setClock() {	// once a day
+	def nowTime = new Date().time
+	def ageInMinutes = state.lastClockSet ? (nowTime - state.lastClockSet)/60000 : 1440
+    log.debug "Clock set age: ${ageInMinutes} minutes"
+    if (ageInMinutes >= 1440) {
+		state.lastClockSet = nowTime
+        def nowCal = Calendar.getInstance(location.timeZone) // get current location timezone
+		log.debug "Setting clock to ${nowCal.getTime().format("EEE MMM dd yyyy HH:mm:ss z", location.timeZone)}"
+        sendEvent(name: "SetClock", value: "setting clock to ${nowCal.getTime().format("EEE MMM dd yyyy HH:mm:ss z", location.timeZone)}", displayed: true, isStateChange: true)
+		zwave.clockV1.clockSet(hour: nowCal.get(Calendar.HOUR_OF_DAY), minute: nowCal.get(Calendar.MINUTE), weekday: nowCal.get(Calendar.DAY_OF_WEEK)).format()
+    } else "delay 87"
+}
+
+def refresh() {
+    // Force a refresh
+    log.info "Requested a refresh"
+    state.lastBatteryGet = (new Date().time) - (1440 * 60000)
+    state.lastClockSet = (new Date().time) - (1440 * 60000)
+    poll()
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.thermostatoperatingstatev1.ThermostatOperatingStateReport cmd)
@@ -383,7 +473,8 @@ def poll() {
 		zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 2).format(),
 		zwave.thermostatModeV2.thermostatModeGet().format(),
 		zwave.thermostatFanModeV3.thermostatFanModeGet().format(),
-		zwave.thermostatOperatingStateV1.thermostatOperatingStateGet().format()
+		zwave.thermostatOperatingStateV1.thermostatOperatingStateGet().format(),
+        zwave.multiChannelV3.multiInstanceCmdEncap(instance: 2).encapsulate(zwave.sensorMultilevelV3.sensorMultilevelGet()).format() // CT-100/101 Customization for Humidity
 	], 2300)
 }
 

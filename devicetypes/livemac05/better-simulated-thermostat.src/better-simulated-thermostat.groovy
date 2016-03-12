@@ -45,34 +45,37 @@ metadata {
 
 	tiles (scale:2) {
     
-    	multiAttributeTile(name:"thermostatMulti", type:"lighting", width:6, height:4) {
-          tileAttribute("device.temperature", key: "SECONDARY_CONTROL") {
-            attributeState("default", label:'Current Sensor Temperature: ${currentValue}˚', unit:"dF")
-         
+    	multiAttributeTile(name:"thermostatMulti", type:"thermostat", width:6, height:4) {
+          tileAttribute("device.temperature", key: "PRIMARY_CONTROL") {
+            //attributeState("default", label:'Current Sensor Temperature: ${currentValue}˚', unit:"dF")
+         	attributeState("default", label:'${currentValue}', unit:"dF")
           }
           tileAttribute("device.thermostatSetpoint", key: "VALUE_CONTROL") {
             attributeState("default", action: "setBothSetpoints")
+            //attributeState("VALUE_UP", action: "temperatureUp")
+            //attributeState("VALUE_DOWN", action: "temperatureDown")
           }
-          /*tileAttribute("device.humidity", key: "SECONDARY_CONTROL") {
+          tileAttribute("device.humidity", key: "SECONDARY_CONTROL") {
             attributeState("default", label:'${currentValue}%', unit:"%")
-          }*/
-          /*tileAttribute("device.thermostatOperatingState", key: "OPERATING_STATE") {
+          }
+          tileAttribute("device.thermostatOperatingState", key: "OPERATING_STATE") {
+            attributeState("disabled", backgroundColor:"#e0b000", label: 'Disconnected', icon: 'st.locks.lock.unknown')
             attributeState("idle", backgroundColor:"#44b621")
             attributeState("heating", backgroundColor:"#ffa81e")
             attributeState("cooling", backgroundColor:"#269bd2")
-          }*/
-          tileAttribute("device.thermostatOperatingState", key: "PRIMARY_CONTROL") {
+          }
+          /*tileAttribute("device.thermostatOperatingState", key: "PRIMARY_CONTROL") {
             attributeState("disabled", backgroundColor:"#e0b000", label: 'Disconnected', icon: 'st.locks.lock.unknown')
             attributeState("idle", backgroundColor:"#44b621", icon:"st.thermostat.heating-cooling-off")
             attributeState("heating", backgroundColor:"#ff2323", icon:"st.thermostat.heat")
             attributeState("cooling", backgroundColor:"#269bd2", icon:"st.thermostat.cool")
-          }
-          /*tileAttribute("device.thermostatMode", key: "THERMOSTAT_MODE") {
+          }*/
+          tileAttribute("device.thermostatMode", key: "THERMOSTAT_MODE") {
             attributeState("off", label:'${name}')
             attributeState("heat", label:'${name}')
             attributeState("cool", label:'${name}')
             attributeState("auto", label:'${name}')
-          }*/
+          }
           /*tileAttribute("device.thermostatOperatingState", key: "SECONDARY_CONTROL") {
             attributeState("off", label:'Thermostat OFF')
             attributeState("heat", label:'Heating')
@@ -408,6 +411,32 @@ def tempDown() {
 def setTemperature(value) {
 	def ts = device.currentState("temperature")
 	sendEvent(name:"temperature", value: value, unit: "fahrenheit",)
+	evaluate(value, device.currentValue("heatingSetpoint"), device.currentValue("coolingSetpoint"))
+}
+
+def bothUp () {
+	if (device.currentValue("thermostatMode") == "cool") {
+        def ts = device.currentState("coolingSetpoint")
+        def value = ts ? ts.integerValue + 1 : 72
+		sendEvent(name:"coolingSetpoint", value: value)
+    } else if (device.currentValue("thermostatMode") == "heat") {
+        def ts = device.currentState("heatingSetpoint")
+        def value = ts ? ts.integerValue + 1 : 72
+		sendEvent(name:"heatingSetpoint", value: value)
+    }
+	evaluate(value, device.currentValue("heatingSetpoint"), device.currentValue("coolingSetpoint"))
+}
+
+def bothDown () {
+	if (device.currentValue("thermostatMode") == "cool") {
+        def ts = device.currentState("coolingSetpoint")
+        def value = ts ? ts.integerValue - 1 : 72
+		sendEvent(name:"coolingSetpoint", value: value)
+    } else if (device.currentValue("thermostatMode") == "heat") {
+        def ts = device.currentState("heatingSetpoint")
+        def value = ts ? ts.integerValue - 1 : 72
+		sendEvent(name:"heatingSetpoint", value: value)
+    }
 	evaluate(value, device.currentValue("heatingSetpoint"), device.currentValue("coolingSetpoint"))
 }
 

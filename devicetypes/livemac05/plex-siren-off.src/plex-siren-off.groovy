@@ -15,7 +15,7 @@
  */
 metadata {
 	definition (name: "Plex Siren Off", namespace: "livemac05", author: "Brandon Reeves") {
-		capability "Momentary"
+		capability "switch"
 	}
 
     preferences {
@@ -29,8 +29,8 @@ metadata {
 
 	tiles(scale: 2) {
 		// TODO: define your main and details tiles here
-        standardTile("off", "device.momentary", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-            state "default", label:'OFF', action:"momentary.off", icon:"st.switches.switch.off"
+        standardTile("off", "device.switch", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+            state "default", label:'OFF', action:"switch.off", icon:"st.switches.switch.off"
         }
         
         main "off"
