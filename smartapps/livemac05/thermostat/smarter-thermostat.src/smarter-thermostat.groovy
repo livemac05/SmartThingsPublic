@@ -43,7 +43,12 @@ preferences() {
         input "weatherSensor", "capability.temperatureMeasurement", title: "Weather Sensor", required: false
     }
     
-    section("Present Mode Thresholds") {
+    section("Relative Thresholds") {
+    	input "auxiliaryThreshold", "number", title: "Thermostat diff setting", defaultValue: 4, required: true
+        input "swapThreshold", "number", title: "Swap mode if >x in other direction", defaultValue: 6, required: true
+    }
+    
+    section("Absolute Thresholds") {
     	input "presentHeatTrigger", "number", title: "Min Temperature When Home", defaultValue: 62, required: true
         input "presentCoolTrigger", "number", title: "Max Temperature When Home", defaultValue: 78, required: true
     }
@@ -179,6 +184,7 @@ def subscribeToEvents()
     subscribe(weatherSensor, "temperature", weatherHandler)
     
     subscribe(realThermostat, "temperature", realTempHandler)
+    subscribe(realThermostat, "humidity", realHumidityHandler)
     
     subscribe(realThermostat, "thermostatMode", temperatureHandler)
     subscribe(simulatedThermostat, "thermostatMode", temperatureHandler)
@@ -266,6 +272,11 @@ def weatherHandler (evt) {
 def realTempHandler (evt) {
 	sensorHandler(evt)
     temperatureHandler(evt)
+}
+
+def realHumidityHandler (evt) {
+	log.debug "Recieved humidity event: ${realThermostat.currentHumidity}"
+	simulatedThermostat.setHumidity(realThermostat.currentHumidity)
 }
 
 def changedLocationMode(evt)
@@ -426,15 +437,30 @@ private evaluate()
                     state.coolingSetpoint = ct + 2
                     setCoolingSetpoint()
                     log.debug "realThermostat.setCoolingSetpoint(${ct + 2}), OFF"
+                    log.debug "Testing ${simulatedThermostat.currentCoolingSetpoint - currentTemp} against >= ${swapThreshold} for swap"
+                    if (simulatedThermostat.currentCoolingSetpoint - currentTemp >= swapThreshold) {
+                    	log.info "setpoint - sensor > swap threshold. Swapping mode to heat"
+                        simulatedThermostat.setThermostatMode('heat')
+                    }
                 } else {
                 	state.coolingSetpoint = ct + 2
                     setCoolingSetpoint()
-                    log.debug "realThermostat.setCoolingSetpoint(${ct + 2}), OFF @ Target Temp"
+                    log.debug "realThermostat.setCoolingSetpoint(${ct + 2}), OFF @ Target Temp (for heat)"
+                    log.debug "Testing ${simulatedThermostat.currentCoolingSetpoint - currentTemp} against >= ${swapThreshold} for swap"
+                    if (simulatedThermostat.currentCoolingSetpoint - currentTemp >= swapThreshold) {
+                    	log.info "setpoint - sensor > swap threshold. Swapping mode to heat"
+                        simulatedThermostat.setThermostatMode('heat')
+                    }
                 }
             }
             if (tm in ["heat","emergency heat","auto"]) {
                 // heater
-                if (simulatedThermostat.currentHeatingSetpoint - currentTemp >= threshold) {
+                if (simulatedThermostat.currentHeatingSetpoint - currentTemp >= auxiliaryThreshold) {
+                	log.info "Diff > aux threshold. Bumping by auxiliary threshold"
+                    state.heatingSetpoint = ct + auxiliaryThreshold
+                    setHeatingSetpoint()
+                    log.debug "realThermostat.setHeatingSetpoint(${ct + auxiliaryThreshold}), ON"
+                } else if (simulatedThermostat.currentHeatingSetpoint - currentTemp >= threshold) {
                     state.heatingSetpoint = ct + 2
                     setHeatingSetpoint()
                     log.debug "realThermostat.setHeatingSetpoint(${ct + 2}), ON"
@@ -442,10 +468,20 @@ private evaluate()
                     state.heatingSetpoint = ct - 2
                     setHeatingSetpoint()
                     log.debug "realThermostat.setHeatingSetpoint(${ct - 2}), OFF"
+                    log.debug "Testing ${currentTemp - simulatedThermostat.currentHeatingSetpoint} against >= ${swapThreshold} for swap"
+                    if (currentTemp - simulatedThermostat.currentHeatingSetpoint >= swapThreshold) {
+                    	log.info "sensor - setpoint > swap threshold. Swapping mode to cool"
+                        simulatedThermostat.setThermostatMode('cool')
+                    }
                 } else {
                     state.heatingSetpoint = ct - 2
                     setHeatingSetpoint()
-                    log.debug "realThermostat.setHeatingSetpoint(${ct - 2}), OFF @ Target Temp"
+                    log.debug "realThermostat.setHeatingSetpoint(${ct - 2}), OFF @ Target Temp (for cool)"
+                    log.debug "Testing ${currentTemp - simulatedThermostat.currentHeatingSetpoint} against >= ${swapThreshold} for swap"
+                    if (currentTemp - simulatedThermostat.currentHeatingSetpoint >= swapThreshold) {
+                    	log.info "sensor - setpoint > swap threshold. Swapping mode to cool"
+                        simulatedThermostat.setThermostatMode('cool')
+                    }
                 }
             }
         }
@@ -453,12 +489,21 @@ private evaluate()
 	else {
 		state.coolingSetpoint = simulatedThermostat.currentCoolingSetpoint
 		state.heatingSetpoint = simulatedThermostat.currentHeatingSetpoint
+        def ct = realThermostat.currentTemperature
         if (tm in ["cool", "auto"]) {
             setCoolingSetpoint()
             runIn(state.thermoDelay, setHeatingSetpoint)
+            if (simulatedThermostat.currentCoolingSetpoint - ct >= swapThreshold) {
+                log.info "setpoint - sensor > swap threshold. Swapping mode to heat"
+                simulatedThermostat.setThermostatMode('heat')
+            }
         } else {
         	setHeatingSetpoint()
             runIn(state.thermoDelay, setCoolingSetpoint)
+            if (ct - simulatedThermostat.currentHeatingSetpoint >= swapThreshold) {
+                log.info "sensor - setpoint > swap threshold. Swapping mode to cool"
+                simulatedThermostat.setThermostatMode('cool')
+            }
         }
 	}
     realThermostat.poll()

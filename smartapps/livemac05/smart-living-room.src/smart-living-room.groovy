@@ -33,6 +33,7 @@ preferences {
         input "alarmServerPort", "string", title:"Alarm Controller Port", description: "Port", defaultValue: 9999 , required: false, displayDuringSetup: true
         input "alarmDevice", "capability.alarm", title:"Alarm Device", description: "SmartThings Alarm Device", required: false, displayDuringSetup: true
     	input "alarmSwitches", "capability.switch", title:"Alarm Strobe Lights", description: "Lights to flash during alarm event", multiple: true, required: false, displayDuringSetup: true
+    	input "alarmLightsOff", "capability.switch", title:"Alarm Off Lights", description: "Lights to off during alarm event", multiple: true, required: false, displayDuringSetup: true
     	input "alarmOffSwitch", "capability.switch", title: "Alarm Killswitch", description: "Optional device to disable alarm via switch", required:false, displayDuringSetup:true
 	}
     
@@ -43,7 +44,10 @@ preferences {
         input "watchMovieLightsOff", "capability.switch", title:"Turn these lights off during movies", required: false, multiple: true, displayDuringSetup: true
         input "watchPauseLightsOn", "capability.switch", title:"Turn these lights during pause", required: false, multiple: true, displayDuringSetup: true
         input "watchPauseLightsOnDim", "capability.switch", title:"Turn these lights on dimly during pause", required: false, multiple: true, displayDuringSetup: true
+        input "watchPauseLightsOnLIFX", "capability.switch", title:"Turn these LIFX lights on during pause", required: false, multiple: true, displayDuringSetup: true
+        input "watchPauseLightsOnLIFXDim", "capability.switch", title:"Turn these LIFX lights on dimly during pause", required: false, multiple: true, displayDuringSetup: true
         input "watchEndLightsOn", "capability.switch", title:"Turn these lights after playback is done", required: false, multiple: true, displayDuringSetup: true
+		input "watchEndLightsOnLIFX", "capability.switch", title:"Turn these LIFX lights after playback is done", required: false, multiple: true, displayDuringSetup: true
 		input "keepModes", "mode", title: "Do not overwrite these modes", multiple: true
         input "noLightModes", "mode", title: "No lights on stop in these modes", multiple: true, required:false
         input "lowLightModes", "mode", title: "Dim lights only in these modes", multiple: true, required:false
@@ -199,40 +203,48 @@ def flashLights(evt) {
 
 	if (evt.value == 'on') {
         state.doFlash = true
-        state.numFlashes = 60
+        state.numFlashes = 20
 
-        log.debug "FLASHING ${state.numFlashes} times"
-
-        flashOn()
+        //log.debug "FLASHING ${state.numFlashes} times"
+        
+        flashOff()
+        alarmLightsOff?.off()
+        /*for (def i = 4; i < state.numFlashes; i+=4) {
+        	log.debug "Setting flash for ${i} and ${i + 2}"
+        	runIn(i, flashOn)
+            runIn(i + 2, flashOff)
+        }*/
     } else {
     	state.doFlash = false
         log.debug "STOPPING FLASH"
     }
 }
 
-def flashOn() {
+def flashOn(evt) {
 	if (state.doFlash && state.numFlashes) {
     	state.numFlashes = state.numFlashes - 1
     	log.debug("FLASH ON")
         try{
-            alarmSwitches?.setLevel(100)
+            alarmSwitches?.on()
         } catch (th) {
         	log.debug "Exception when trying to set alarm switch levels"
         }
-        runIn(1, flashOff);
+        runIn(10, flashOff)
+        alarmLightsOff?.off()
     }
 }
 
-def flashOff() {
+def flashOff(evt) {
 	if (state.doFlash && state.numFlashes) {
     	log.debug("FLASH OFF")
     	state.numFlashes = state.numFlashes - 1
         try {
-       		alarmSwitches?.setLevel(1)
+       		alarmSwitches?.off()
         } catch (th) {
         	log.debug "Exception when trying to set alarm switch levels"
         }
-        runIn(1, flashOn);
+        flashOn()
+        //runIn(1, flashOn)
     }
 }
 
@@ -299,7 +311,11 @@ def receiverOn(evt) {
 		log.error "Unable to send poll to receiver: $e"
     }
     
-    televisionOn()
+    if (state.roomOneScene != "music") {
+        televisionOn()
+    } else {
+    	log.debug "Not turning tv on since music"
+    }
 }
 
 def receiverOff(evt) {
@@ -404,7 +420,7 @@ def televisionOn(evt) {
 }
 
 def televisionOff(evt) {
-	log.debug "Reciever off"
+	log.debug "Television off"
     
     
     def params = [
@@ -416,6 +432,15 @@ def televisionOff(evt) {
         }
     } catch (e) {
 		log.error "Unable to send off to television: $e"
+    }
+}
+
+def musicOnTelevisionOff(evt) {
+	log.debug "Checking if music playing"
+    
+    if (state.roomOneScene == "music") {
+    	log.debug "music playing, turning tv off"
+    	televisionOff()
     }
 }
 
@@ -738,6 +763,7 @@ def setLightingScene() {
     
 	log.debug "Setting lights in room ${room} to ${scene} scene"
     if (room == "living-room") {
+    	def lastScene = state.roomOneScene
     	state.roomOneScene = scene
     	switch (scene) {
         	case "gaming":
@@ -763,23 +789,35 @@ def setLightingScene() {
                 break
             case "paused":
                 log.debug "Paused lights"
-                watchPauseLightsOn?.on()
-                watchPauseLightsOn?.setLevel(30)
-                watchPauseLightsOnDim?.on()
-                watchPauseLightsOnDim?.setLevel(1)
+                if (location.mode in lowLightModes) {
+                    watchPauseLightsOn?.on()
+                    watchPauseLightsOn?.setLevel(1)
+                    /*watchPauseLightsOnDim?.on()
+                    watchPauseLightsOnDim?.setLevel(1)*/
+                    watchPauseLightsOnLIFXDim?.setLevel(25)
+                    watchPauseLightsOnLIFXDim?.on()
+                    watchPauseLightsOnLIFX?.setLevel(25)
+                    watchPauseLightsOnLIFX?.on()
+                } else {
+                    watchPauseLightsOn?.on()
+                    watchPauseLightsOn?.setLevel(30)
+                    watchPauseLightsOnDim?.on()
+                    watchPauseLightsOnDim?.setLevel(1)
+                    watchPauseLightsOnLIFXDim?.setLevel(25)
+                    watchPauseLightsOnLIFXDim?.on()
+                    watchPauseLightsOnLIFX?.setLevel(40)
+                    watchPauseLightsOnLIFX?.on()
+                }
                 break
             case "stopped":
-                log.debug "Stopped lights"
-                if (location.mode in noLightModes) {
-                	log.debug "Not turning any lights on"
-                } else if (location.mode in lowLightModes) {
-                	log.debug "Turning lights on dimly"
-                    watchEndLightsOn?.on()
-                    watchEndLightsOn?.setLevel(1)
-                } else {
-                    watchEndLightsOn?.on()
-                    watchEndLightsOn?.setLevel(30)
+                
+                if (lastScene == 'music') {
+                	log.debug "In Music mode, no light or mode change required (on stop)"
+                    break
                 }
+                
+            	log.debug "Stopped Mode Change"
+                
                 if (now.after(sun.sunset) || now.before(sun.sunrise)) {
                     // Nighttime
                     log.debug "After dark, setting to Night"
@@ -791,9 +829,27 @@ def setLightingScene() {
                     if (!(location.mode in keepModes))
 						location.setMode("Home")
                 }
+                
+                log.debug "Stopped lights"
+                
+                if (location.mode in noLightModes) {
+                	log.debug "Not turning any lights on"
+                } else if (location.mode in lowLightModes) {
+                	log.debug "Turning lights on dimly"
+                    watchEndLightsOn?.on()
+                    watchEndLightsOn?.setLevel(1)
+                    watchEndLightsOnLIFX?.setLevel(25)
+                    watchEndLightsOnLIFX?.on()
+                } else {
+                    watchEndLightsOn?.on()
+                    watchEndLightsOn?.setLevel(30)
+                    watchEndLightsOnLIFX?.setLevel(50)
+                    watchEndLightsOnLIFX?.on()
+                }
                 break
             case "music":
             	log.debug "No light change required"
+                runIn(30, musicOnTelevisionOff)
                 break
             default:
                 log.debug "No Scene Match"

@@ -21,7 +21,7 @@ definition(
     namespace: "livemac05",
     author: "livemac05",
     description: "Provides a visual warning in advance that the garage door is about to automatically close",
-    category: "Convenience",
+    category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/light_motion-outlet-contact.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Meta/light_motion-outlet-contact@2x.png"
 )
@@ -63,10 +63,18 @@ def initialize() {
 
 def switchOnHandler(evt) {
 	log.debug "switch $evt.value"
+    mySwitch.off()
     if (garageDoor.currentDoor != 'open') {
     	return
     }
+    def delay = ((numFlashes + 1) * (onFor + offFor)) / 1000
+    log.debug "Closing garage in ${delay}"
+    runIn(delay, closer, [overwrite: true])
 	flashLights()
+}
+
+def closer(evt) {
+	log.info "Closing garage"
     garageDoor.close()
 }
 

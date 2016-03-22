@@ -54,6 +54,12 @@ preferences {
         input "garageLightDelay", "number", title: "Minutes before light turns off automatically", required: true
     }
     
+    section("Garage Door Smart Outlet") {
+    	input "garageSwitch", "capability.switch", title: "Garage Door Power Switch", required: false
+    	input "garageMeter", "capability.powerMeter", title: "Garage Door Power Meter", required: false
+		input "lightThreshold", "number", title: "Watts to consider light on", required: false
+    }
+    
     section("Timeout before checking if the door opened or closed correctly?"){
 		input "checkTimeout", "number", title: "Door Operation Check Timeout?", required: true, defaultValue: 25
 	}
@@ -69,42 +75,32 @@ preferences {
 
 def installed()
 {
-def realgdstate = sensor.currentContact
-def virtualgdstate = virtualgd.currentContact
-//log.debug "in installed ... current state=  $realgdstate"
-//log.debug "gd state= $virtualgd.currentContact"
-
-	subscribe(sensor, "contact", contactHandler)
-    subscribe(virtualgd, "door", virtualgdcontactHandler)
-    subscribe(garageLight, "switch", sendLightPulse)
-    state.noLightToggle = true
-    garageLight?.off()
-    
-    // sync them up if need be set virtual same as actual
-    if (realgdstate != virtualgdstate)
-     {
-        if (realgdstate == "open")
-           {
-             virtualgd.open()
-            }
-         else virtualgd.close()
-      }
- }
+	initialize()
+}
 
 def updated()
 {
-def realgdstate = sensor.currentContact
-def virtualgdstate = virtualgd.currentContact
-//log.debug "in updated ... current state=  $realgdstate"
-//log.debug "in updated ... gd state= $virtualgd.currentContact"
-
 
 	unsubscribe()
+	initialize()
+    
+}
+
+def initialize() {
+    garageSwitch?.on()
+    
 	subscribe(sensor, "contact", contactHandler)
     subscribe(virtualgd, "door", virtualgdcontactHandler)
     subscribe(garageLight, "switch", sendLightPulse)
+    
+    if (garageMeter) {
+        subscribe(garageMeter, "power", meterHandler)
+    }
+    
+    
     state.noLightToggle = true
     garageLight?.off()
+    
     
     // sync them up if need be set virtual same as actual
     if (realgdstate != virtualgdstate)
@@ -121,8 +117,30 @@ def virtualgdstate = virtualgd.currentContact
               mysend("Virtual Garage Door Closed!")   
      		 }
       }
+      
+    if (garageMeter) {
+        handlePowerValue(garageMeter.currentPower)
+    }
   // for debugging and testing uncomment  temperatureHandlerTest()
 }
+
+def meterHandler (evt) {
+	log.debug "Received power event with: ${evt.value}"
+	handlePowerValue(evt.value as double)
+}
+
+def handlePowerValue (val) {
+	if (val > lightThreshold) {
+    	log.debug "Power value > threshold"
+        log.info "Setting light state to on"
+        garageLightAutoOn()
+    } else {
+    	log.debug "Power value < threshold"
+        log.info "Setting light state to off"
+    	garageLightAutoOff()
+    }
+}
+    	
 
 def contactHandler(evt) 
 {
@@ -173,13 +191,29 @@ def garageLightAutoOff () {
     	log.debug "Garage light state not on, not auto-resetting to off"
     }
 }
+
+
+def garageLightAutoOn () {
+	if (garageLight.currentSwitch == "off") {
+    	log.debug "Garage door light auto-resetting to on state"
+        state.noLightToggle = true
+        garageLight?.on()
+    } else {
+    	log.debug "Garage light state not off, not auto-resetting to on"
+    }
+}
+
+/*
 def garageLightTimedOff () {
 	log.debug "Garage light actually toggling, trying to turn off"
 	state.noLightToggle = false
 	garageLight?.off()
-}
+}*/
 
 def virtualgdcontactHandler(evt) {
+
+    garageSwitch?.on()
+    
 // how to determine which contact
 def realgdstate = sensor.currentContact
 //log.debug "in virtual gd contact/button handler event = $evt"
@@ -246,9 +280,9 @@ def sendLightPulse(evt) {
 		log.error "Unable to send light toggle pulse: $e"
     }
     
-    if (evt.value == "on") {
+    /*if (evt.value == "on") {
     	runIn(garageLightDelay * 60, garageLightTimedOff, [overwrite: true])
-    }
+    }*/
 }
 
 private mysend(msg) {
