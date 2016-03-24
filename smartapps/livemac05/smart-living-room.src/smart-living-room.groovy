@@ -104,6 +104,11 @@ mappings {
         	PUT: "setLightingScene"
         ]
     }
+    path("/getState") {
+    	action: [
+        	GET: "returnState"
+        ]
+    }
     path("/test") {
     	action: [
         	GET: "testEndpoint"
@@ -134,6 +139,8 @@ def updated() {
 }
 
 def initialize() {
+	subscribe(location, "mode", modeChangeHandler)
+    
 	subscribe(alarmDevice, "siren", sirenHandler)
     subscribe(alarmDevice, "strobe", flashLights)
     subscribe(alarmDevice, "off", flashLights)
@@ -754,25 +761,94 @@ def cancelPath () {
 
 /************************ AUTO LIGHTS CONTROLLER *************************/
 
+
+def modeChangeHandler (evt) {
+	if (!(location.mode in keepModes)) {
+    	// Re-evaluate mode based on room-one scene
+        log.debug "Re-evaluating mode based on scene due to overwritable mode change"
+        setSceneMode()
+    }
+}
+
+def setSceneMode(lastScene) {
+    def sun = getSunriseAndSunset()
+    def now = new Date()
+    
+	log.debug "Setting mode based on living room"
+    
+    switch (state.roomOneScene) {
+        case "gaming":
+        case "sports":
+        case "tv-long-form":
+        case "tv":
+            log.debug "TV Mode"
+            if (!(location.mode in keepModes))
+                setLocationMode("TV Mode")
+            break
+        case "movie":
+            log.debug "Movie Mode"
+            if (!(location.mode in keepModes))
+                setLocationMode("Movie Mode")
+            break
+        case "stopped":
+
+            if (lastScene && lastScene == 'music') {
+                log.debug "In Music mode, no mode change required (on stop)"
+                break
+            }
+
+            log.debug "Stopped Mode Change"
+
+            if (now.after(sun.sunset) || now.before(sun.sunrise)) {
+                // Nighttime
+                log.debug "After dark, setting to Night"
+                if (!(location.mode in keepModes))
+                    location.setMode("Night")
+            } else {
+                // Daytime
+                log.debug "Before dark, setting to Home"
+                if (!(location.mode in keepModes))
+                    location.setMode("Home")
+            }
+            break
+        case "music":
+            log.debug "No mode change required"
+            break
+        default:
+            log.debug "No Scene Match"
+            break
+    }
+}
+
+def returnState () {
+	return [
+    	"currentScenes": [
+            "living-room": state.roomOneScene,
+            "brandons-room": state.roomTwoScene
+        ]
+    ]
+}
+
 def setLightingScene() {
     def sun = getSunriseAndSunset()
     def now = new Date()
     
     def room = params.room
 	def scene = params.scene
+    def lastRoomOneScene = state.roomOneScene
+    
     
 	log.debug "Setting lights in room ${room} to ${scene} scene"
     if (room == "living-room") {
-    	def lastScene = state.roomOneScene
     	state.roomOneScene = scene
+        setSceneMode(lastRoomOneScene)
+        
     	switch (scene) {
         	case "gaming":
             case "sports":
             case "tv-long-form":
             case "tv":
-                log.debug "TV Mode and lights"
-                if (!(location.mode in keepModes))
-               		setLocationMode("TV Mode")
+                log.debug "TV lights"
                 watchAnyLightsOff?.off()
                 if (scene == 'tv-long-form') {
                 	log.debug "Also setting to movie lights"
@@ -782,9 +858,7 @@ def setLightingScene() {
                 }
                 break
             case "movie":
-                log.debug "Movie Mode and lights"
-                if (!(location.mode in keepModes))
-               		setLocationMode("Movie Mode")
+                log.debug "Movie lights"
                 watchMovieLightsOff?.off()
                 break
             case "paused":
@@ -811,23 +885,9 @@ def setLightingScene() {
                 break
             case "stopped":
                 
-                if (lastScene == 'music') {
-                	log.debug "In Music mode, no light or mode change required (on stop)"
+                if (lastRoomOneScene == 'music') {
+                	log.debug "In Music mode, no light change required (on stop)"
                     break
-                }
-                
-            	log.debug "Stopped Mode Change"
-                
-                if (now.after(sun.sunset) || now.before(sun.sunrise)) {
-                    // Nighttime
-                    log.debug "After dark, setting to Night"
-                    if (!(location.mode in keepModes))
-						location.setMode("Night")
-                } else {
-                    // Daytime
-                    log.debug "Before dark, setting to Home"
-                    if (!(location.mode in keepModes))
-						location.setMode("Home")
                 }
                 
                 log.debug "Stopped lights"
@@ -889,10 +949,14 @@ def setLightingScene() {
                 } else if (location.mode in secondaryLowLightModes) {
                 	log.debug "Secondary Turning lights on dimly"
                     watchSecondaryEndLightsOn?.on()
-                    watchSecondaryEndLightsOn?.setLevel(1)
+                    try {
+                 		watchSecondaryEndLightsOn?.setLevel(1)
+                    } catch (e) {}
                 } else {
                     watchSecondaryEndLightsOn?.on()
-                    watchSecondaryEndLightsOn?.setLevel(30)
+                    try {
+                        watchSecondaryEndLightsOn?.setLevel(30)
+                    } catch (e) {}
                 }
                 break
             case "music":

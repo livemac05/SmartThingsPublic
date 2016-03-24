@@ -103,7 +103,7 @@ def getSetpoints() {
     	case 'Bedtime':
         	return [heat: 66, cool: 70]
         case 'Morning':
-        	return [heat: 68, cool: 71]
+        	return [heat: 69, cool: 71]
         
         case 'Home':
         case 'WFH':
@@ -326,7 +326,7 @@ def setpointBacksync (evt) {
     }
     
     if (getSensor()) {
-        disableSync()
+        //disableSync()
         evaluate()
         return
     }
